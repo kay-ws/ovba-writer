@@ -1,0 +1,22 @@
+# Go build artifacts
+/skeleton
+/m2write
+/m2normwrite
+*.exe
+*.test
+
+# Generated output and scratch bins
+/vbaProject.bin
+/*.bin
+
+# Python caches
+__pycache__/
+
+# Workbooks are never committed: corpus originals can carry personal data
+# (author metadata, etc.). Only the extracted golden fixtures under testdata
+# are tracked.
+*.xlsm
+corpus-src/
+
+# testdata is tracked (negates the *.bin / *.xlsm rules above)
+!**/testdata/**
