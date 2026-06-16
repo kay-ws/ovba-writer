@@ -2,6 +2,7 @@ package vbaproject
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/kay-ws/ovba-writer/cfb"
 	"github.com/kay-ws/ovba-writer/ovba"
@@ -72,6 +73,21 @@ func Read(data []byte) (*Project, error) {
 			Source:     src,
 		})
 	}
+
+	// Capture every stream the writer does not own (see Project.RawStreams) so
+	// Write can re-emit it verbatim. VBA/* is regenerated and PROJECT is written
+	// back from ProjectStreamRaw, so both are excluded to avoid a write collision.
+	p.RawStreams = make(map[string][]byte)
+	for _, path := range c.Paths() {
+		switch firstSegment(path) {
+		case "VBA", "PROJECT":
+			// owned by Write
+		default:
+			if s, ok := c.Stream(path); ok {
+				p.RawStreams[path] = s
+			}
+		}
+	}
 	return p, nil
 }
 
@@ -100,3 +116,13 @@ func classify(name, projectKey string, c *cfb.Container) ModuleType {
 // protected one contains a key hash and is longer (over 60 chars in the protected sample). The threshold 28
 // is the valley between them. Protected projects are treated as an edge case in v1 (see DESIGN.md).
 func isProtected(dpb string) bool { return len(dpb) > 28 }
+
+// firstSegment returns the first "/"-separated component of a CFB stream path
+// (e.g. "VBA" for "VBA/dir", "UserForm1" for "UserForm1/\x03VBFrame", and
+// "PROJECTwm" for a root-level stream).
+func firstSegment(path string) string {
+	if i := strings.IndexByte(path, '/'); i >= 0 {
+		return path[:i]
+	}
+	return path
+}

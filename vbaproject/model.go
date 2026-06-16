@@ -50,6 +50,13 @@ type Project struct {
 	ReferencesRaw    []byte      // verbatim byte span of the dir references section (written back unchanged)
 	ProjectInfoRaw   []byte      // verbatim span of dir PROJECTINFORMATION (written back unchanged)
 	ProjectStreamRaw []byte      // verbatim of the entire PROJECT stream (incl. CMG/DPB/GC and Host Extender Info)
-	Props            ProjectProps
-	Protection       Protection
+	// RawStreams holds every stream the writer does not own, keyed by full
+	// "/"-separated path, captured verbatim at read time and re-emitted on write.
+	// Membership is structural: the first path segment is neither "VBA" (owned and
+	// regenerated) nor "PROJECT" (re-emitted verbatim). This carries root-level
+	// designer storages (UserForm1/f, o, \x01CompObj, \x03VBFrame), PROJECTwm, and
+	// any other opaque payload through a round-trip without modeling it.
+	RawStreams map[string][]byte
+	Props      ProjectProps
+	Protection Protection
 }

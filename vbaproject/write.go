@@ -2,6 +2,7 @@ package vbaproject
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/kay-ws/ovba-writer/cfb"
 	"github.com/kay-ws/ovba-writer/ovba"
@@ -44,6 +45,13 @@ func Write(p *Project) ([]byte, error) {
 	dirPlain = append(dirPlain, ovba.BuildProjectModules(specs)...)
 
 	w := cfb.NewWriter()
+	// Pass through every stream the writer does not own (root-level designer
+	// storages, PROJECTwm, ...) verbatim before adding the regenerated VBA/* and
+	// PROJECT. RawStreams excludes the VBA/ and PROJECT namespaces, so there is no
+	// collision with the AddStream calls below.
+	for path, data := range p.RawStreams {
+		w.AddStream(strings.Split(path, "/"), data)
+	}
 	w.AddStream([]string{"PROJECT"}, p.ProjectStreamRaw)
 	w.AddStream([]string{"VBA", "_VBA_PROJECT"}, ovba.VBAProjectStub())
 	w.AddStream([]string{"VBA", "dir"}, ovba.Compress(dirPlain))
