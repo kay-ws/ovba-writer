@@ -16,7 +16,7 @@ func loadBin(t *testing.T, name string) []byte {
 }
 
 func TestWriteRoundTrip(t *testing.T) {
-	for _, name := range []string{"p1_compiled.bin", "p2_refs.bin", "p4_form.bin", "p5_mbcs.bin"} {
+	for _, name := range []string{"p1_compiled.bin", "p2_refs.bin", "p4_form.bin", "p5_mbcs.bin", "p6_nested_form.bin"} {
 		t.Run(name, func(t *testing.T) {
 			p, err := Read(loadBin(t, name))
 			if err != nil {

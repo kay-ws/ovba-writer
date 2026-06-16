@@ -2,6 +2,7 @@ package vbaproject
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/kay-ws/ovba-writer/cfb"
@@ -146,5 +147,57 @@ func TestWriteFormEditCodeBehindKeepsDesigner(t *testing.T) {
 		if !ok || !bytes.Equal(have, want) {
 			t.Errorf("designer stream %q changed by a code-behind edit", path)
 		}
+	}
+}
+
+// A UserForm with container controls (Frame, MultiPage, Page) nests their data
+// in sub-storages of the designer storage, several levels deep (e.g.
+// UserForm1/i05/i07/o). Every stream in that subtree must round-trip
+// byte-for-byte: the writer rebuilds the nested storages from their stream paths
+// and never models the controls. The control class survives in each storage's
+// \x01CompObj ProgID even though the writer zeroes the storage's directory CLSID.
+func TestWriteNestedFormPreservesDesignerStorages(t *testing.T) {
+	in := loadBin(t, "p6_nested_form.bin")
+	orig, err := cfb.Open(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := Read(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := Write(p)
+	if err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	got, err := cfb.Open(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	checked, deepSeen := 0, false
+	for _, path := range orig.Paths() {
+		if !strings.HasPrefix(path, "UserForm1/") {
+			continue
+		}
+		want, _ := orig.Stream(path)
+		have, ok := got.Stream(path)
+		if !ok {
+			t.Errorf("designer stream %q dropped", path)
+			continue
+		}
+		if !bytes.Equal(have, want) {
+			t.Errorf("designer stream %q not preserved verbatim", path)
+		}
+		checked++
+		if strings.Count(path, "/") >= 3 { // e.g. UserForm1/i05/i07/o
+			deepSeen = true
+		}
+	}
+	if checked == 0 {
+		t.Fatal("precondition: fixture has no UserForm1 designer streams")
+	}
+	if !deepSeen {
+		t.Fatal("precondition: fixture has no >=3-level nested designer storage")
 	}
 }

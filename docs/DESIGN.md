@@ -264,10 +264,15 @@ other opaque payload. Caches under `VBA/` stay dropped because they fall inside 
 namespace.
 
 Directory-entry metadata (CLSID, state bits, timestamps, color) is not preserved; the
-minimal-profile writer synthesizes it. This is sound for the streams in scope: in
-Excel-produced bins the designer storage carries no non-zero CLSID or state — a form's
-identity lives in the contents of `\x03VBFrame`/`\x01CompObj`, not the directory entry —
-and the storage timestamps and tree coloring are already normalized for the `VBA` storage.
+minimal-profile writer synthesizes it. This is sound for the streams in scope. The
+top-level designer storage carries a zero CLSID, but a nested container control (Frame,
+MultiPage, Page, ...) stores its control-class CLSID in its storage directory entry. That
+CLSID is redundant: each control storage also holds a `\x01CompObj` stream whose ProgID
+names the same class (e.g. `Forms.Frame.1`), and that stream is carried verbatim. Excel
+resolves the control class from `\x01CompObj`, so zeroing the directory-entry CLSID is
+harmless — verified by round-tripping a three-level-nested Frame+MultiPage form, which
+re-instantiates in Excel with every control intact. State bits, storage timestamps, and
+tree coloring are likewise synthesized, as they already are for the `VBA` storage.
 
 ## Write guards
 
