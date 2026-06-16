@@ -18,9 +18,10 @@ func Write(p *Project) ([]byte, error) {
 	}
 	specs := make([]ovba.ModuleSpec, 0, len(p.Modules))
 	for _, m := range p.Modules {
-		if m.Type == ModuleForm {
-			return nil, fmt.Errorf("vbaproject: form module %q is not supported in v1", m.Name)
-		}
+		// A UserForm's code-behind module is written like any other module (its
+		// in-bin source is an Attribute header plus code, the same shape as a class
+		// or document module). The form's designer storage (UserForm1/...) is not
+		// modeled here; it is carried verbatim via RawStreams (see Read).
 		// Module/stream names are assumed to be within ASCII. Only ASCII can be written losslessly to both
 		// the dir MBCS field (CODEPAGE written directly) and the UNICODE field (utf16le); for non-ASCII,
 		// utf16le would truncate non-BMP characters and MBCS would ignore the CODEPAGE, so it is rejected.

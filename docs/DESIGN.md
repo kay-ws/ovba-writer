@@ -227,19 +227,47 @@ The intended workflow is `Read` → edit `Module.Source` → `Write`. The contra
 makes this safe is **minimal reconstruction**: `Write` rebuilds only the module list
 and the module streams; everything else is preserved byte-for-byte.
 
-The `Project` model carries three verbatim spans captured at read time:
+The `Project` model carries verbatim state captured at read time:
 
 - `ProjectInfoRaw` — the `PROJECTINFORMATION` span of `dir`.
 - `ReferencesRaw` — the `PROJECTREFERENCES` span of `dir`.
 - `ProjectStreamRaw` — the entire `PROJECT` text stream (including `CMG`/`DPB`/`GC`
   protection fields and the Host Extender Info).
+- `RawStreams` — every stream the writer does not own, by full path (see
+  [Stream pass-through](#stream-pass-through)).
 
 On write, the new `dir` is `ProjectInfoRaw ++ ReferencesRaw ++ BuildProjectModules(...)`:
 the project information and references are spliced back unchanged, and only
-`PROJECTMODULES` is rebuilt from the model. The `PROJECT` stream is written verbatim.
-This avoids re-deriving structures whose exact bytes must round-trip — references,
-LibIDs, protection state — and confines authored changes to the module streams, which
-are the only thing the editor actually touched.
+`PROJECTMODULES` is rebuilt from the model. The `PROJECT` stream is written verbatim, and
+the streams in `RawStreams` are re-emitted unchanged. This avoids re-deriving structures
+whose exact bytes must round-trip — references, LibIDs, protection state, designer
+storages — and confines authored changes to the module streams, which are the only thing
+the editor actually touched.
+
+## Stream pass-through
+
+`Read` and `Write` own two namespaces and treat everything else as opaque:
+
+- the `VBA` storage — `dir`, `_VBA_PROJECT` (a stub), and the module streams are
+  regenerated from the model, and its performance caches (`__SRP_*`) are dropped; and
+- the `PROJECT` stream — re-emitted verbatim from `ProjectStreamRaw`.
+
+Every other stream is carried through unchanged. `Read` records each stream whose first
+path segment is neither `VBA` nor `PROJECT` in `Project.RawStreams` (keyed by full
+`/`-separated path), and `Write` re-adds them before the regenerated streams.
+
+The boundary is structural rather than a list of known names: a stream is carried because
+the writer does not own its namespace, not because it was recognized. This captures a
+UserForm's root-level designer storage (`UserForm1/f`, `o`, `\x01CompObj`, `\x03VBFrame`)
+as a whole subtree — without parsing or classifying it — along with `PROJECTwm` and any
+other opaque payload. Caches under `VBA/` stay dropped because they fall inside the owned
+namespace.
+
+Directory-entry metadata (CLSID, state bits, timestamps, color) is not preserved; the
+minimal-profile writer synthesizes it. This is sound for the streams in scope: in
+Excel-produced bins the designer storage carries no non-zero CLSID or state — a form's
+identity lives in the contents of `\x03VBFrame`/`\x01CompObj`, not the directory entry —
+and the storage timestamps and tree coloring are already normalized for the `VBA` storage.
 
 ## Write guards
 
@@ -260,15 +288,17 @@ self-corruption*, not to harden against malicious input. There are two:
   names are rejected rather than written into one field correctly and the other
   corrupted.
 
-`Write` also refuses protected projects and projects containing UserForm modules,
-both of which fall outside the source-only scope.
+`Write` also refuses protected projects, which fall outside the source-only scope.
 
 ## Scope and non-goals
 
-- **Editable:** standard, class, and document modules. Their source is read, exposed,
-  and rewritten.
-- **Detected only:** UserForms (`.frm`/`.frx`). They are recognized and classified,
-  but authoring them is out of scope (a host fallback is expected for forms).
+- **Editable:** standard, class, document, and UserForm modules. Their source is read,
+  exposed, and rewritten. For a UserForm only the code-behind module is editable; its
+  designer layout is preserved, not authored.
+- **Preserved, not modified:** the UserForm designer storage (`UserForm1/...`) and any
+  other non-`VBA` payload, carried verbatim by the [stream pass-through](#stream-pass-through).
+  Editing form *layout* — controls, positions, properties inside `\x03VBFrame`/`o` — is
+  out of scope.
 - **Preserved, not modified:** protected projects. `CMG`/`DPB`/`GC` are read and kept
   verbatim, but the password protection is **not decrypted**, and `Write` refuses to
   emit a protected project. Protection is detected by a heuristic on the `DPB` length

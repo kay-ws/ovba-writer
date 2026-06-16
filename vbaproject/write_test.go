@@ -16,7 +16,7 @@ func loadBin(t *testing.T, name string) []byte {
 }
 
 func TestWriteRoundTrip(t *testing.T) {
-	for _, name := range []string{"p1_compiled.bin", "p2_refs.bin", "p5_mbcs.bin"} {
+	for _, name := range []string{"p1_compiled.bin", "p2_refs.bin", "p4_form.bin", "p5_mbcs.bin"} {
 		t.Run(name, func(t *testing.T) {
 			p, err := Read(loadBin(t, name))
 			if err != nil {
@@ -62,16 +62,6 @@ func TestWriteRejectsProtected(t *testing.T) {
 	}
 	if _, err := Write(p); err == nil {
 		t.Error("a protected project should return an error")
-	}
-}
-
-func TestWriteRejectsForm(t *testing.T) {
-	p, err := Read(loadBin(t, "p4_form.bin"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := Write(p); err == nil {
-		t.Error("a project containing a form should return an error")
 	}
 }
 

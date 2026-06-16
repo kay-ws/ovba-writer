@@ -46,3 +46,105 @@ func TestWritePreservesRootStreamsOutsideVBA(t *testing.T) {
 		t.Errorf("PROJECTwm not preserved verbatim: %d bytes -> %d bytes", len(want), len(have))
 	}
 }
+
+// A UserForm contributes a code-behind module stream under VBA/ and a separate
+// root-level designer storage (UserForm1/{f, o, \x01CompObj, \x03VBFrame}) that
+// holds the form definition. Writing a form-bearing project must carry that
+// designer storage through byte-for-byte; the writer never models or edits it.
+func TestWriteFormPreservesDesignerStorage(t *testing.T) {
+	in := loadBin(t, "p4_form.bin")
+
+	orig, err := cfb.Open(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := Read(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := Write(p)
+	if err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	got, err := cfb.Open(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, child := range []string{"f", "o", "\x01CompObj", "\x03VBFrame"} {
+		path := "UserForm1/" + child
+		want, ok := orig.Stream(path)
+		if !ok {
+			t.Fatalf("precondition: fixture lacks %q", path)
+		}
+		have, ok := got.Stream(path)
+		if !ok {
+			t.Errorf("designer stream %q dropped", path)
+			continue
+		}
+		if !bytes.Equal(have, want) {
+			t.Errorf("designer stream %q not preserved verbatim (%d -> %d bytes)", path, len(want), len(have))
+		}
+	}
+}
+
+// Editing a UserForm's code-behind must persist while its sibling designer
+// storage stays byte-for-byte identical. The two live in different CFB entries
+// (the VBA/UserForm1 module stream vs the root-level UserForm1/ storage), so a
+// source edit must not couple to the form layout.
+func TestWriteFormEditCodeBehindKeepsDesigner(t *testing.T) {
+	in := loadBin(t, "p4_form.bin")
+	orig, err := cfb.Open(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	p, err := Read(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var form *Module
+	for i := range p.Modules {
+		if p.Modules[i].Type == ModuleForm {
+			form = &p.Modules[i]
+		}
+	}
+	if form == nil {
+		t.Fatal("precondition: fixture has no form module")
+	}
+	edited := form.Source + "\r\n' edited\r\n"
+	form.Source = edited
+	wantName := form.Name
+
+	out, err := Write(p)
+	if err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	p2, err := Read(out)
+	if err != nil {
+		t.Fatalf("re-read: %v", err)
+	}
+	var got string
+	for i := range p2.Modules {
+		if p2.Modules[i].Name == wantName {
+			got = p2.Modules[i].Source
+		}
+	}
+	if got != edited {
+		t.Errorf("edited code-behind did not round-trip")
+	}
+
+	gotCFB, err := cfb.Open(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, child := range []string{"f", "o", "\x01CompObj", "\x03VBFrame"} {
+		path := "UserForm1/" + child
+		want, _ := orig.Stream(path)
+		have, ok := gotCFB.Stream(path)
+		if !ok || !bytes.Equal(have, want) {
+			t.Errorf("designer stream %q changed by a code-behind edit", path)
+		}
+	}
+}
