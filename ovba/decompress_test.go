@@ -14,13 +14,27 @@ func TestDecompressRejectsTruncatedRawChunk(t *testing.T) {
 	}
 }
 
+func TestDecompressChunkRejectsOversizedOutput(t *testing.T) {
+	// flag 0x02: bit0 literal, bit1 copy-token. One seed byte then a copy token
+	// (offset 1, max length) expands the output past the 4096 per-chunk ceiling
+	// ([MS-OVBA] §2.4.1.1.4). A malformed chunk must be rejected.
+	body := []byte{0x02, 0x41, 0xFF, 0x0F}
+	if _, err := decompressChunk(body); err == nil {
+		t.Fatal("expected error for chunk exceeding 4096 decompressed bytes, got nil")
+	}
+}
+
 func TestRoundTripSmall(t *testing.T) {
 	for _, in := range [][]byte{
 		[]byte("Attribute VB_Name = \"Module1\"\r\nSub X()\r\nEnd Sub\r\n"),
 		bytes.Repeat([]byte("a"), 50), // RLE
 		{},                            // empty
 	} {
-		got, err := Decompress(Compress(in))
+		comp, err := Compress(in)
+		if err != nil {
+			t.Fatalf("Compress error: %v", err)
+		}
+		got, err := Decompress(comp)
 		if err != nil {
 			t.Fatalf("Decompress error: %v", err)
 		}
@@ -40,7 +54,10 @@ func TestDecompressGoldenModules(t *testing.T) {
 			if err != nil {
 				continue // skip e.g. when p5 has no module of the same name
 			}
-			want, _ := os.ReadFile(filepath.Join(dir, mod+".plain"))
+			want, err := os.ReadFile(filepath.Join(dir, mod+".plain"))
+			if err != nil {
+				t.Fatalf("%s/%s: read plain: %v", book, mod, err)
+			}
 			got, err := Decompress(comp)
 			if err != nil {
 				t.Fatalf("%s/%s: %v", book, mod, err)

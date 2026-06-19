@@ -55,13 +55,21 @@ func Write(p *Project) ([]byte, error) {
 	}
 	w.AddStream([]string{"PROJECT"}, p.ProjectStreamRaw)
 	w.AddStream([]string{"VBA", "_VBA_PROJECT"}, ovba.VBAProjectStub())
-	w.AddStream([]string{"VBA", "dir"}, ovba.Compress(dirPlain))
+	dirComp, err := ovba.Compress(dirPlain)
+	if err != nil {
+		return nil, fmt.Errorf("vbaproject: compress dir: %w", err)
+	}
+	w.AddStream([]string{"VBA", "dir"}, dirComp)
 	for _, m := range p.Modules {
 		enc, err := encodeMBCS(m.Source, p.Props.CodePage)
 		if err != nil {
 			return nil, fmt.Errorf("vbaproject: module %q: %w", m.Name, err)
 		}
-		w.AddStream([]string{"VBA", m.StreamName}, ovba.Compress(enc))
+		comp, err := ovba.Compress(enc)
+		if err != nil {
+			return nil, fmt.Errorf("vbaproject: module %q: %w", m.Name, err)
+		}
+		w.AddStream([]string{"VBA", m.StreamName}, comp)
 	}
 	return w.Bytes()
 }
@@ -93,8 +101,16 @@ func checkModuleSet(p *Project) error {
 	have := make(map[string]bool, len(p.Modules))
 	for _, m := range p.Modules {
 		have[m.Name] = true
-		if _, ok := listed[m.Name]; !ok {
+		kind, ok := listed[m.Name]
+		if !ok {
 			return fmt.Errorf("vbaproject: module %q is not listed in the PROJECT stream (changing the module set is not supported in v1)", m.Name)
+		}
+		want := projectKind(m.Type)
+		if want == "" {
+			return fmt.Errorf("vbaproject: module %q has an unknown ModuleType %d", m.Name, m.Type)
+		}
+		if kind != want {
+			return fmt.Errorf("vbaproject: module %q kind mismatch: PROJECT declares %s but the model is %s (changing a module's kind is not supported in v1)", m.Name, kind, want)
 		}
 	}
 	for name := range listed {
@@ -103,4 +119,23 @@ func checkModuleSet(p *Project) error {
 		}
 	}
 	return nil
+}
+
+// projectKind maps a ModuleType to the kind keyword PROJECT uses
+// (Module/Class/BaseClass/Document, per ovba.ParseProjectText). It returns ""
+// for a ModuleType with no PROJECT keyword; checkModuleSet treats that as an
+// error rather than silently skipping the kind check.
+func projectKind(t ModuleType) string {
+	switch t {
+	case ModuleStd:
+		return "Module"
+	case ModuleClass:
+		return "Class"
+	case ModuleDocument:
+		return "Document"
+	case ModuleForm:
+		return "BaseClass"
+	default:
+		return ""
+	}
 }

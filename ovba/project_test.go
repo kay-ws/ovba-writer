@@ -8,14 +8,20 @@ import (
 )
 
 func TestVBAProjectStub(t *testing.T) {
-	want, _ := os.ReadFile(filepath.Join("testdata", "golden", "_VBA_PROJECT"))
+	want, err := os.ReadFile(filepath.Join("testdata", "golden", "_VBA_PROJECT"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got := VBAProjectStub(); !bytesEqual(got, want) {
 		t.Errorf("VBAProjectStub = %x, want %x", got, want)
 	}
 }
 
 func TestProjectStream(t *testing.T) {
-	want, _ := os.ReadFile(filepath.Join("testdata", "golden", "PROJECT"))
+	want, err := os.ReadFile(filepath.Join("testdata", "golden", "PROJECT"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got := ProjectStream(); !bytesEqual(got, want) {
 		t.Errorf("ProjectStream len %d != golden len %d (first diff %d)",
 			len(got), len(want), firstDiff(got, want))
@@ -23,7 +29,10 @@ func TestProjectStream(t *testing.T) {
 }
 
 func TestDirPlain(t *testing.T) {
-	want, _ := os.ReadFile(filepath.Join("testdata", "golden", "dir.plain"))
+	want, err := os.ReadFile(filepath.Join("testdata", "golden", "dir.plain"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	got := DirStreamPlain()
 	if !bytesEqual(got, want) {
 		t.Fatalf("DirStreamPlain len %d != golden len %d (first diff %d)",
@@ -32,8 +41,14 @@ func TestDirPlain(t *testing.T) {
 }
 
 func TestDirCompressed(t *testing.T) {
-	want, _ := os.ReadFile(filepath.Join("testdata", "golden", "dir"))
-	got := Compress(DirStreamPlain())
+	want, err := os.ReadFile(filepath.Join("testdata", "golden", "dir"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := Compress(DirStreamPlain())
+	if err != nil {
+		t.Fatalf("Compress(dir): %v", err)
+	}
 	if !bytesEqual(got, want) {
 		t.Fatalf("Compress(dir) len %d != golden len %d (first diff %d)",
 			len(got), len(want), firstDiff(got, want))
