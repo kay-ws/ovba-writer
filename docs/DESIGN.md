@@ -305,9 +305,11 @@ self-corruption*, not to harden against malicious input. There are two:
   Editing form *layout* — controls, positions, properties inside `\x03VBFrame`/`o` — is
   out of scope.
 - **Preserved, not modified:** protected projects. `CMG`/`DPB`/`GC` are read and kept
-  verbatim, but the password protection is **not decrypted**, and `Write` refuses to
-  emit a protected project. Protection is detected by a heuristic on the `DPB` length
-  rather than by decrypting the protection state, since decryption is not performed.
+  verbatim, and `Write` refuses to emit a protected project. Protection is detected by
+  decrypting the `CMG` `ProjectProtectionState` ([MS-OVBA] §2.4.3.3, §2.3.1.15) and
+  testing its `fUserProtected`/`fHostProtected`/`fVBAProtected` bits — reversible
+  obfuscation, so no password is required. The `DPB` password itself is **not
+  decrypted** (the library never needs to recover or break it).
 
 ## Verification
 
@@ -344,7 +346,7 @@ Root: <https://learn.microsoft.com/en-us/openspecs/office_file_formats/ms-ovba/5
 | §2.3.4.2.1.10    | PROJECTVERSION record                  | `ovba/parse.go`, `ovba/project.go` (`dirVersionRecord`) |
 | §2.3.4.2.2 / .2.5 | REFERENCE / REFERENCEREGISTERED       | `ovba/project.go` (`refRegistered`, `refLibid`) |
 | §2.3.4.2.3.2.8   | MODULETYPE (`0x0021` / `0x0022`)       | `ovba/parse.go`, `vbaproject/write.go` |
-| §2.4.3           | Project protection / DPB               | `vbaproject/read.go` (preserved, not decrypted) |
+| §2.4.3.3 / §2.3.1.15 | Data Decryption / ProjectProtectionState | `ovba/encryption.go` (`DecryptData`), `vbaproject/read.go` (`isProtected`) |
 
 ### [MS-CFB] — Compound File Binary File Format
 
