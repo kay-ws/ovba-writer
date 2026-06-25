@@ -23,7 +23,7 @@ func NormalizeModuleSource(mt ModuleType, disk string, existing *Module) (string
 	case ModuleDocument:
 		return normalizeDocument(disk, existing)
 	case ModuleForm:
-		return "", fmt.Errorf("vbaproject: form modules are not supported in v1; handle externally")
+		return normalizeForm(disk, existing)
 	default:
 		return "", fmt.Errorf("vbaproject: unsupported ModuleType %d", mt)
 	}
@@ -125,4 +125,44 @@ func normalizeStd(disk string) (string, error) {
 		return "", fmt.Errorf("vbaproject: std disk form has no Attribute VB_Name")
 	}
 	return disk, nil
+}
+
+// normalizeForm produces the in-bin source for a UserForm code-behind update. A disk .frm carries a
+// VERSION / Begin..End designer block, then Attribute VB_* lines, then code. Only the code-behind is
+// editable here: the in-bin Attribute header (which includes the form-specific VB_Base linking the
+// module to its designer storage) is taken from existing, exactly as normalizeDocument does, so the
+// rewritten code module stays bound to the carried designer storage even if the disk .frm's own
+// attributes differ. The code-behind boundary is everything after the last `Attribute VB_` line.
+func normalizeForm(disk string, existing *Module) (string, error) {
+	if existing == nil {
+		return "", fmt.Errorf("vbaproject: form module requires existing (the in-bin header)")
+	}
+	var header []string
+	for _, ln := range strings.Split(toCRLF(existing.Source), "\r\n") {
+		if strings.HasPrefix(ln, "Attribute ") {
+			header = append(header, ln)
+		} else {
+			break // the leading Attribute block ends; the code body begins
+		}
+	}
+	if len(header) == 0 {
+		return "", fmt.Errorf("vbaproject: existing form module has no Attribute header")
+	}
+	diskLines := strings.Split(disk, "\r\n")
+	lastAttr := -1
+	for i, ln := range diskLines {
+		if strings.HasPrefix(strings.TrimSpace(ln), "Attribute VB_") {
+			lastAttr = i
+		}
+	}
+	if lastAttr < 0 {
+		return "", fmt.Errorf("vbaproject: form disk form (.frm) has no Attribute VB_ line")
+	}
+	start := lastAttr + 1
+	for start < len(diskLines) && strings.TrimSpace(diskLines[start]) == "" {
+		start++ // skip blank lines between the attribute block and the code body
+	}
+	out := append([]string{}, header...)
+	out = append(out, diskLines[start:]...)
+	return strings.Join(out, "\r\n"), nil
 }
